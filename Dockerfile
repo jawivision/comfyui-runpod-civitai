@@ -130,7 +130,7 @@ FROM base AS downloader
 ARG HUGGINGFACE_ACCESS_TOKEN
 # Set default model type if none is provided
 # ARG MODEL_TYPE=flux1-dev-fp8
-ARG MODEL_TYPE=flux1-schnell
+ARG MODEL_TYPE=none
 ARG CIVITAI_DOWNLOAD_URL_1
 ARG CIVITAI_FILENAME_1=civitai_model_1.safetensors
 ARG CIVITAI_DOWNLOAD_URL_2
