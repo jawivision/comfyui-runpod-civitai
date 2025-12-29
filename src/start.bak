@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+# Use libtcmalloc for better memory management
+TCMALLOC="$(ldconfig -p | grep -Po "libtcmalloc.so.\d" | head -n 1)"
+export LD_PRELOAD="${TCMALLOC}"
+
+if [ "${DOWNLOAD_JAWI_VISION_MODELS:-false}" = "true" ]; then
+    RUNPOD_VOLUME="${RUNPOD_VOLUME:-/runpod-volume}"
+
+    if [ ! -d "${RUNPOD_VOLUME}" ]; then
+        echo "worker-comfyui: Network volume not mounted at ${RUNPOD_VOLUME} (set DOWNLOAD_JAWI_VISION_MODELS=false or attach a Network Volume)" >&2
+        exit 1
+    fi
+
+    mkdir -p \
+        "${RUNPOD_VOLUME}/models/checkpoints" \
+        "${RUNPOD_VOLUME}/models/vae" \
+        "${RUNPOD_VOLUME}/models/unet" \
+        "${RUNPOD_VOLUME}/models/clip" \
+        "${RUNPOD_VOLUME}/models/loras" \
+        "${RUNPOD_VOLUME}/models/upscale_models"
+
+    WGET_BASE=(wget -q)
+    if [ -n "${HUGGINGFACE_ACCESS_TOKEN:-}" ]; then
+        WGET_BASE+=(--header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}")
+    fi
+
+    download_if_missing() {
+        local out="$1"
+        local url="$2"
+
+        if [ -s "${out}" ]; then
+            echo "worker-comfyui: Model exists: ${out}"
+            return 0
+        fi
+
+        local tmp="${out}.tmp"
+        rm -f "${tmp}"
+        echo "worker-comfyui: Downloading ${url} -> ${out}"
+        "${WGET_BASE[@]}" -O "${tmp}" "${url}"
+        mv "${tmp}" "${out}"
+    }
+
+    download_if_missing \
+        "${RUNPOD_VOLUME}/models/upscale_models/4x-UltraSharp.pth" \
+        "https://huggingface.co/datasets/Kizi-Art/Upscale/resolve/fa98e357882a23b8e7928957a39462fbfaee1af5/4x-UltraSharp.pth"
+
+    download_if_missing \
+        "${RUNPOD_VOLUME}/models/clip/ViT-L-14-TEXT-detail-improved-hiT-GmP-TE-only-HF.safetensors" \
+        "https://huggingface.co/zer0int/CLIP-GmP-ViT-L-14/resolve/main/ViT-L-14-TEXT-detail-improved-hiT-GmP-TE-only-HF.safetensors"
+
+    download_if_missing \
+        "${RUNPOD_VOLUME}/models/loras/FLUX.1-Turbo-Alpha.safetensors" \
+        "https://huggingface.co/alimama-creative/FLUX.1-Turbo-Alpha/resolve/main/diffusion_pytorch_model.safetensors"
+
+    download_if_missing \
+        "${RUNPOD_VOLUME}/models/clip/t5xxl_fp8_e4m3fn.safetensors" \
+        "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"
+
+    download_if_missing \
+        "${RUNPOD_VOLUME}/models/vae/flux_vae.safetensors" \
+        "https://huggingface.co/StableDiffusionVN/Flux/resolve/main/Vae/flux_vae.safetensors"
+
+    if [ -n "${CIVITAI_DOWNLOAD_URL_1:-}" ]; then
+        download_if_missing "${RUNPOD_VOLUME}/models/checkpoints/${CIVITAI_FILENAME_1:-civitai_model_1.safetensors}" "${CIVITAI_DOWNLOAD_URL_1}"
+    fi
+    if [ -n "${CIVITAI_DOWNLOAD_URL_2:-}" ]; then
+        download_if_missing "${RUNPOD_VOLUME}/models/checkpoints/${CIVITAI_FILENAME_2:-civitai_model_2.safetensors}" "${CIVITAI_DOWNLOAD_URL_2}"
+    fi
+    if [ -n "${CIVITAI_DOWNLOAD_URL_3:-}" ]; then
+        download_if_missing "${RUNPOD_VOLUME}/models/checkpoints/${CIVITAI_FILENAME_3:-civitai_model_3.safetensors}" "${CIVITAI_DOWNLOAD_URL_3}"
+    fi
+fi
+
+# Ensure ComfyUI-Manager runs in offline network mode inside the container
+comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
+
+echo "worker-comfyui: Starting ComfyUI"
+
+# Allow operators to tweak verbosity; default is DEBUG.
+: "${COMFY_LOG_LEVEL:=DEBUG}"
+
+# Serve the API and don't shutdown the container
+if [ "$SERVE_API_LOCALLY" == "true" ]; then
+    python -u /comfyui/main.py --disable-auto-launch --disable-metadata --listen --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
+
+    echo "worker-comfyui: Starting RunPod Handler"
+    python -u /handler.py --rp_serve_api --rp_api_host=0.0.0.0
+else
+    python -u /comfyui/main.py --disable-auto-launch --disable-metadata --verbose "${COMFY_LOG_LEVEL}" --log-stdout &
+
+    echo "worker-comfyui: Starting RunPod Handler"
+    python -u /handler.py
+fi

@@ -88,12 +88,30 @@ ENV PIP_NO_INPUT=1
 COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
 RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 
+ARG INSTALL_PULID_NODES=true
+WORKDIR /comfyui
+RUN if [ "$INSTALL_PULID_NODES" = "true" ]; then \
+      uv pip install --upgrade pip setuptools wheel && \
+      uv pip install protobuf insightface onnxruntime timm ftfy sageattention && \
+      comfy-node-install comfyui_pulid_flux_ll && \
+      comfy-node-install teacache && \
+      comfy-node-install wavespeed; \
+    fi
+WORKDIR /
+
 # Optional: install GGUF loader nodes (UnetLoaderGGUF / DualCLIPLoaderGGUF, etc.)
 ARG INSTALL_GGUF_NODES=true
 WORKDIR /comfyui
 RUN if [ "$INSTALL_GGUF_NODES" = "true" ]; then \
       comfy-node-install ComfyUI-GGUF && \
       uv pip install --upgrade gguf; \
+    fi
+WORKDIR /
+
+ARG INSTALL_RGTHREE_COMFY=true
+WORKDIR /comfyui
+RUN if [ "$INSTALL_RGTHREE_COMFY" = "true" ]; then \
+      comfy-node-install rgthree-comfy; \
     fi
 WORKDIR /
 
@@ -106,7 +124,7 @@ FROM base AS downloader
 ARG HUGGINGFACE_ACCESS_TOKEN
 # Set default model type if none is provided
 # ARG MODEL_TYPE=flux1-dev-fp8
-ARG MODEL_TYPE=jawi-vision
+ARG MODEL_TYPE=flux1-schnell
 ARG CIVITAI_DOWNLOAD_URL_1
 ARG CIVITAI_FILENAME_1=civitai_model_1.safetensors
 ARG CIVITAI_DOWNLOAD_URL_2
