@@ -23,6 +23,11 @@ ENV CMAKE_BUILD_PARALLEL_LEVEL=8
 RUN apt-get update && apt-get install -y \
     python3.12 \
     python3.12-venv \
+    python3.12-dev \
+    build-essential \
+    pkg-config \
+    cmake \
+    ninja-build \
     git \
     wget \
     libgl1 \
@@ -92,10 +97,11 @@ ARG INSTALL_PULID_NODES=true
 WORKDIR /comfyui
 RUN if [ "$INSTALL_PULID_NODES" = "true" ]; then \
       uv pip install --upgrade pip setuptools wheel && \
-      uv pip install protobuf insightface onnxruntime timm ftfy sageattention && \
-      comfy-node-install comfyui_pulid_flux_ll && \
-      comfy-node-install teacache && \
-      comfy-node-install wavespeed; \
+      uv pip install "numpy<2" cython && \
+      uv pip install protobuf insightface onnxruntime timm ftfy sageattention --no-build-isolation && \
+      comfy-node-install https://github.com/lldacing/ComfyUI_PuLID_Flux_ll.git && \
+      comfy-node-install https://github.com/welltop-cn/ComfyUI-TeaCache.git && \
+      comfy-node-install https://github.com/chengzeyi/Comfy-WaveSpeed.git; \
     fi
 WORKDIR /
 
